@@ -1,5 +1,3 @@
-# error-explainer README
-
 This is the README for your extension "error-explainer". After writing up a brief description, we recommend including the following sections.
 
 ## Features
