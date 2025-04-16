@@ -1,18 +1,27 @@
-import * as dotenv from 'dotenv';
-const fetch = (...args: Parameters<typeof import('node-fetch')['default']>) =>
-  import('node-fetch').then(mod => mod.default(...args));
-import * as vscode from 'vscode';
+/// <reference lib="esnext" /> // This will exclude DOM types
 
-dotenv.config();  // ✅ Load .env file
+const dotenv = require('dotenv');
+const vscode = require('vscode');
+const nodeFetch = require('node-fetch');   // Make sure to import fetch for making API calls
+const path = require('path');
 
-const apiKey = process.env.API_KEY;  // ✅ Read API key
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+
+const apiKey = process.env.GEMINI_API_KEY; // Use the GEMINI_API_KEY from your .env file
+console.log("Loaded API Key:", apiKey);
+
 
 if (!apiKey) {
-  console.error('❌ API key not found! Make sure your .env file has API_KEY=your_key_here');
+  console.error('❌ API key not found! Make sure your .env file has GEMINI_API_KEY=your_key_here');
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+// Command to explain error from context menu
+async function activate(context) {
   console.log('✅ Error Explainer Extension is now active!');
+
+  // Log the extension path and current working directory
+  console.log('Extension Path:', context.extensionPath);
+  console.log('Current Working Directory:', process.cwd());
 
   let disposable = vscode.commands.registerCommand('extension.explainError', async () => {
     const editor = vscode.window.activeTextEditor;
@@ -29,67 +38,98 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    try {
-      const explanation = await fetchExplanation(selectedText);
-      
-      if (explanation) {
-        vscode.window.showInformationMessage(explanation);
-      } else {
-        vscode.window.showErrorMessage('No explanation received from Groq API.');
-      }
+    // Show a loading notification while the explanation is being fetched
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: '🔍 Generating explanation...',
+        cancellable: false,
+      },
+      async () => {
+        try {
+          const explanation = await fetchExplanation(selectedText);
 
-    } catch (error) {
-      console.error('Error fetching explanation:', error);
-      vscode.window.showErrorMessage('Failed to fetch explanation.');
-    }
+          if (explanation) {
+            vscode.window.showInformationMessage(`🧠 ${explanation}`);
+          } else {
+            vscode.window.showErrorMessage('No explanation received from Gemini API.');
+          }
+        } catch (error) {
+          console.error('❌ Error fetching explanation:', error);
+          vscode.window.showErrorMessage('Failed to fetch explanation.');
+        }
+      }
+    );
   });
 
+  // Register the command to be used in the context menu
   context.subscriptions.push(disposable);
 }
 
-export async function deactivate() {}
+// Function to deactivate the extension (clean-up, if necessary)
+function deactivate() {}
 
-interface GroqAPIResponse {
-  choices?: Array<{ delta: { content: string } }>;
-}
+module.exports = {
+  activate,
+  deactivate,
+};
 
-async function fetchExplanation(errorMessage: string): Promise<string | undefined> {
-  const url = 'https://api.groq.com/openai/v1/chat/completions';  // Replace with the correct endpoint if needed
+// Define an interface for the response data structure
+/**
+ * @typedef {Object} GeminiApiResponse
+ * @property {Array<{ content: { parts: Array<{ text: string }> } }> } candidates
+ */
+
+// Fetch explanation from Gemini API
+async function fetchExplanation(errorMessage) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = JSON.stringify({
-    model: "meta-llama/llama-4-scout-17b-16e-instruct",  // Replace with the correct Groq model name
-    messages: [
-      { role: "user", content: `Explain this error: ${errorMessage}` }
-    ],
-    temperature: 0.2,
-    stream: true  // Enable streaming
+    contents: [
+      {
+        parts: [
+          {
+            text: `Explain the following error in simple terms:\n\n${errorMessage}`
+          }
+        ]
+      }
+    ]
   });
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: body
-  });
-
-  const rawText = await response.text();
-  console.log('🌐 Raw response from Groq:', rawText);
-
-  let data: GroqAPIResponse;
   try {
-    data = JSON.parse(rawText);
+    // Perform the API request to Gemini
+    const response = await nodeFetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      console.error('❌ Error from Gemini API:', await response.text());
+      return undefined;
+    }
+
+    // Cast the response to GeminiApiResponse
+    const data = await response.json();
+    console.log("🔥 Gemini API Raw Response:", JSON.stringify(data, null, 2));
+
+
+    // Log the raw response for debugging
+    console.log('API Response:', data);
+
+    // Safely access the 'text' property
+    const explanation = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (explanation) {
+      console.log('Explanation:', explanation);  // Log the explanation for debugging
+    }
+
+    return explanation;
+
   } catch (error) {
-    console.error('❌ Failed to parse JSON from Groq:', error);
+    console.error('❌ Error during fetch operation:', error);
     return undefined;
   }
-
-  // Collecting streamed data and returning the explanation
-  let explanation = '';
-  for (const chunk of data.choices || []) {
-    explanation += chunk.delta?.content || '';
-  }
-
-  return explanation;
 }

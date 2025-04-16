@@ -2,6 +2,10 @@
   "name": "error-explainer",
   "displayName": "error-explainer-copilot",
   "description": "A VS Code extension to explain error messages clearly.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shubhamjjw14/error-explainer.git"
+  },
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.99.0"
@@ -38,6 +42,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/node-fetch": "^2.6.12",
     "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
@@ -48,7 +53,6 @@
   },
   "dependencies": {
     "dotenv": "^16.5.0",
-    "node-fetch": "^3.3.2",
-    "undici": "^7.8.0"
+    "node-fetch": "^2.6.12"
   }
 }
